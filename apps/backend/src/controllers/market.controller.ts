@@ -32,7 +32,7 @@ export const createMarket =async (req:Request,res:Response)=>{
      return res.json(market)
     }
     catch(e){
-      res.json(e);
+      return res.json(e);
     }
 
 }
