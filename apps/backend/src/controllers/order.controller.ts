@@ -7,6 +7,7 @@ export const createOrderController=async (req: Request, res: Response) => {
         ...req.body,
         marketId: req.params.marketId,
     });
+    console.log(result)
 
     if (!result.success) {
         return res.status(400).json({
@@ -15,18 +16,18 @@ export const createOrderController=async (req: Request, res: Response) => {
     }
 
     try {
-        const outcome = await prisma.outcomes.findFirst({
-            where: {
-                id: result.data.outcomeId,
-                marketId: result.data.marketId,
-            },
-        });
+        // const outcome = await prisma.outcomes.findFirst({
+        //     where: {
+        //         id: result.data.outcomeId,
+        //         marketId: result.data.marketId,
+        //     },
+        // });
 
-        if (!outcome) {
-            return res.status(404).json({
-                message: "Market or outcome not found",
-            });
-        }
+        // if (!outcome) {
+        //     return res.status(404).json({
+        //         message: "Market or outcome not found",
+        //     });
+        // }
 
         const order = await prisma.order.create({
             data: {
