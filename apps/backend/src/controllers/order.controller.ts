@@ -1,6 +1,12 @@
 import type { Request, Response } from "express"
 import { createOrderSchema } from "../schemas/orderSchema.js";
 import { prisma } from "db";
+import { Redis } from "ioredis";
+
+const redis = new Redis({
+  host: process.env.REDIS_HOST ?? "localhost",
+  port: parseInt(process.env.REDIS_PORT ?? "6379", 10),
+});
 
 export const createOrderController=async (req: Request, res: Response) => {
     const result = createOrderSchema.safeParse({
@@ -16,18 +22,18 @@ export const createOrderController=async (req: Request, res: Response) => {
     }
 
     try {
-        // const outcome = await prisma.outcomes.findFirst({
-        //     where: {
-        //         id: result.data.outcomeId,
-        //         marketId: result.data.marketId,
-        //     },
-        // });
+        const outcome = await prisma.outcomes.findFirst({
+            where: {
+                id: result.data.outcomeId,
+                marketId: result.data.marketId,
+            },
+        });
 
-        // if (!outcome) {
-        //     return res.status(404).json({
-        //         message: "Market or outcome not found",
-        //     });
-        // }
+        if (!outcome) {
+            return res.status(404).json({
+                message: "Market or outcome not found",
+            });
+        }
 
         const order = await prisma.order.create({
             data: {
@@ -40,6 +46,17 @@ export const createOrderController=async (req: Request, res: Response) => {
                 remainingQuantity: result.data.quantity,
             },
         });
+
+        await redis.xadd(
+            "orders", "*",
+            "orderId", order.id,
+            "userId", order.userId,
+            "marketId", order.marketId,
+            "outcomeId", order.outcomeId,
+            "side", order.orderSide,
+            "price", String(order.price),
+            "quantity", String(order.quantity),
+        );
 
         return res.status(201).json({ order });
     } catch (error) {
