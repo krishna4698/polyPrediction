@@ -4,8 +4,7 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -16,8 +15,10 @@ model User {
   id           String      @id @default(uuid())
   email        String      @unique
   username     String      @unique
-  password     String      
+  password     String
   usdBalance   Int         @default(0)
+  // funds reserved by open (unfilled) orders; moved back on cancel, spent on fill
+  lockedBalance Int        @default(0)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @default(now()) @updatedAt
   orders       Order[]
@@ -33,13 +34,17 @@ model Market {
   outcomes    Outcomes[]
   orders      Order[]
   positions   Positions[]
+  trades      Trade[]
 }
 
 model Outcomes{
   id         String      @id @default(uuid())
   marketId   String
   market     Market      @relation(fields: [marketId], references: [id])
-  name       String 
+  name       String
+  order     Order[]
+ positions  Positions[]
+ trades    Trade[]
 }
 
 enum OrderSide {
@@ -52,10 +57,10 @@ enum OrderStatus {
   Closed
 }
 
-enum Outcome {
-  Yes
-  No
-}
+// enum Outcome {
+//   Yes
+//   No
+// }
 
 model Order {
   id                String      @id @default(uuid())
@@ -63,20 +68,44 @@ model Order {
   user              User        @relation(fields: [userId], references: [id])
   marketId          String
   market            Market      @relation(fields: [marketId], references: [id])
-  orderSide         OrderSide   
-  outcome           Outcome
+  outcomeId         String
+  outcome           Outcomes    @relation(fields: [outcomeId], references: [id])
+  orderSide         OrderSide
   price             Int
   quantity          Int
   remainingQuantity Int
   status            OrderStatus @default(Active)
-}
+  buyTrades         Trade[]     @relation("BuyTrades")
+  sellTrades        Trade[]     @relation("SellTrades")
+} 
 
 model Positions {
-  id           String @id @default(uuid())
+  id           String     @id @default(uuid())
   userId       String
-  user         User   @relation(fields: [userId], references: [id])
+  user         User       @relation(fields: [userId], references: [id])
   marketId     String
-  market       Market @relation(fields: [marketId], references: [id])
+  market       Market     @relation(fields: [marketId], references: [id])
+  outcomeId    String
+  outcome      Outcomes   @relation(fields: [outcomeId], references: [id])
   quantity     Int
+  // shares reserved by open sell orders; available to sell = quantity - lockedQty
+  lockedQty    Int        @default(0)
   averagePrice Int
+
+  @@unique([userId, marketId, outcomeId])
+}
+
+model Trade {
+  id           String   @id @default(uuid())
+  marketId     String
+  market       Market   @relation(fields: [marketId], references: [id])
+  outcomeId    String
+  outcome      Outcomes @relation(fields: [outcomeId], references: [id])
+  buyOrderId   String
+  buyOrder     Order    @relation("BuyTrades", fields: [buyOrderId], references: [id])
+  sellOrderId  String
+  sellOrder    Order    @relation("SellTrades", fields: [sellOrderId], references: [id])
+  price        Int
+  quantity     Int
+  createdAt    DateTime @default(now())
 }
