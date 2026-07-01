@@ -4,7 +4,7 @@ import {z} from "zod";
      outcomeId: z.string().uuid(),
      side: z.enum(["Buy", "Sell"]),
      price: z.number().int().min(1).max(99),
-     quantity: z.number().int().positive(),
+     quantity: z.number().int().positive()
  })
 
 export type createOrderType= z.infer< typeof createOrderSchema>
