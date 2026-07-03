@@ -9,8 +9,7 @@ declare module "express-serve-static-core"{
 
 export const authMiddleware= (req: Request, res: Response, next:NextFunction) => {
       try{
-        // const token =req.cookies.token("token");
-        const token =req.headers.authorization
+        const token = req.cookies.token;
     console.log("this is token", token);
 
       if(!token){
