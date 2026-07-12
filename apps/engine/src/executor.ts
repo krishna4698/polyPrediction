@@ -9,7 +9,7 @@ async function runWithRetry<T>(action: () => Promise<T>, attempts = 4): Promise<
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       return await action();
-    } catch (err) {
+    } catch (err){
       lastError = err;
       console.warn(`Trade write failed (attempt ${attempt}/${attempts}), retrying...`);
       await new Promise((r) => setTimeout(r, attempt * 500));
@@ -17,6 +17,11 @@ async function runWithRetry<T>(action: () => Promise<T>, attempts = 4): Promise<
   }
   throw lastError;
 }
+
+
+
+
+
 
 // The fill price expressed in a participant's OWN outcome terms.
 // The book prices everything in Yes; a No holder sees (100 - yesPrice).
@@ -55,6 +60,47 @@ export async function executeTrades(trades: TradeResult[]) {
       )
     );
   }
+}
+
+export async function cancelOrder(orderId: string) {
+  await runWithRetry(() =>
+    prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order || order.status !== "Active") return; // nothing to release
+
+      const remaining = order.remainingQuantity;
+      if (remaining > 0) {
+        if (order.orderSide === "Buy") {
+          // Buy reserved cash at its own limit price; give back the unspent part.
+          const refund = order.price * remaining;
+          await tx.user.update({
+            where: { id: order.userId },
+            data: {
+              lockedBalance: { decrement: refund },
+              usdBalance: { increment: refund },
+            },
+          });
+        } else {
+          // Sell reserved shares; free the ones that never got sold.
+          await tx.positions.update({
+            where: {
+              userId_marketId_outcomeId: {
+                userId: order.userId,
+                marketId: order.marketId,
+                outcomeId: order.outcomeId,
+              },
+            },
+            data: { lockedQty: { decrement: remaining } },
+          });
+        }
+      }
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: "Cancelled" },
+      });
+    })
+  );
 }
 
 type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
