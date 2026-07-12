@@ -85,6 +85,7 @@ export const createOrderController=async (req: Request, res: Response) => {
         });
         await redis.xadd(
             "orders", "*",
+            "type", "create",
             "orderId", order.id,
             "userId", order.userId,
             "marketId", order.marketId,
@@ -159,7 +160,80 @@ export const getOrderBook = async (req: Request, res: Response) => {
     }
 };
 
-// Recent fills for a market
+export const getMyOpenOrders = async (req: Request, res: Response) => {
+    const userId = (req.user as { id?: string })?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const marketId = req.query.marketId ? String(req.query.marketId) : undefined;
+
+    try {
+        const orders = await prisma.order.findMany({
+            where: {
+                userId,
+                status: "Active",
+                remainingQuantity: { gt: 0 },
+                ...(marketId ? { marketId } : {}),
+            },
+            include: {
+                market: { select: { title: true } },
+                outcome: { select: { name: true } },
+            },
+        });
+
+        const shaped = orders.map((o) => ({
+            id: o.id,
+            marketId: o.marketId,
+            marketTitle: o.market.title,
+            outcomeId: o.outcomeId,
+            outcomeName: o.outcome.name,
+            side: o.orderSide,
+            price: o.price,
+            quantity: o.quantity,
+            remainingQuantity: o.remainingQuantity,
+            filled: o.quantity - o.remainingQuantity,
+        }));
+
+        return res.json(shaped);
+    } catch (error) {
+        console.error("getMyOpenOrders error", error);
+        return res.status(500).json({ message: "could not load open orders" });
+    }
+};
+
+export const cancelOrderController = async (req: Request, res: Response) => {
+    const userId = (req.user as { id?: string })?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const orderId = String(req.params.orderId);
+
+    try {
+        const order = await prisma.order.findUnique({ where: { id: orderId } });
+        if (!order) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+        if (order.userId !== userId) {
+            return res.status(403).json({ message: "Not your order" });
+        }
+        if (order.status !== "Active") {
+            return res.status(409).json({ message: "Order is not active" });
+        }
+
+        await redis.xadd(
+            "orders", "*",
+            "type", "cancel",
+            "orderId", order.id,
+            "userId", order.userId,
+            "marketId", order.marketId,
+            "outcomeId", order.outcomeId,
+        );
+        
+        return res.status(202).json({ message: "Cancel requested", orderId: order.id });
+    } catch (error) {
+        console.error("cancelOrder error", error);
+        return res.status(500).json({ message: "could not cancel order" });
+    }
+};
+
 export const getTrades = async (req: Request, res: Response) => {
     const marketId = String(req.params.marketId);
     try {
